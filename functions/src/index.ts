@@ -27,31 +27,39 @@ export const login = functions.https.onRequest(async (req, res) => {
   try {
     const { password } = JSON.parse(req.body);
     if (password === APP_PASSWORD) {
-      res.json({ success: true, token: 'authenticated' }); // Prosty token dla sesji
+      res.json({ success: true, token: 'authenticated' });
     } else {
       res.status(401).json({ error: 'Invalid password' });
     }
-  } catch (error) {
+  } catch (error:any) {
     console.error(error);
-    res.status(500).json({ error: 'Failed to login' });
+      if (error instanceof SyntaxError) {
+        res.status(400).json({ error: 'Invalid JSON format in request body' });
+      } else {
+        res.status(500).json({ error: error.message || 'Failed to login' });
+      }
   }
 });
 
 export const getOptions = functions.https.onRequest(async (req, res) => {
-  const filters: FilterCriteria = req.query.filters ? JSON.parse(req.query.filters as string) : {
-    baseAsset: 'BTC',
-    optionType: 'both',
-  };
+  const filters: FilterCriteria = req.query.filters
+    ? JSON.parse(req.query.filters as string)
+    : { baseAsset: 'BTC', optionType: 'both' };
   const cacheKey = JSON.stringify(filters);
 
   try {
     const cacheDoc = await db.collection('cache').doc(cacheKey).get();
     if (cacheDoc.exists && Date.now() - cacheDoc.data()!.timestamp < 30000) {
-      return res.json(cacheDoc.data()!.options);
+      res.json(cacheDoc.data()!.options);
+      return;
     }
 
-    const { data: instrumentsData } = await axios.get(`${DERIBIT_API}/public/get_instruments?currency=${filters.baseAsset}&kind=option`);
-    const instruments = instrumentsData.result.filter((item: any) => item.instrument_name.match(/-C$|-P$/));
+    const { data: instrumentsData } = await axios.get(
+      `${DERIBIT_API}/public/get_instruments?currency=${filters.baseAsset}&kind=option`
+    );
+    const instruments = instrumentsData.result.filter((item: any) =>
+      item.instrument_name.match(/-C$|-P$/)
+    );
 
     const tickers = await Promise.all(
       instruments.map((item: any) =>
@@ -61,9 +69,10 @@ export const getOptions = functions.https.onRequest(async (req, res) => {
 
     const options: OptionData[] = instruments.map((item: any, i: number) => {
       const ticker = tickers[i].data.result;
-      const bidAskSpread = ticker.best_ask_price && ticker.best_bid_price 
-        ? ((ticker.best_ask_price - ticker.best_bid_price) / ticker.best_bid_price) * 100 
-        : 0;
+      const bidAskSpread =
+        ticker.best_ask_price && ticker.best_bid_price
+          ? ((ticker.best_ask_price - ticker.best_bid_price) / ticker.best_bid_price) * 100
+          : 0;
 
       return {
         instrument_name: item.instrument_name,
@@ -75,22 +84,28 @@ export const getOptions = functions.https.onRequest(async (req, res) => {
         mark_price: ticker.mark_price,
         implied_volatility: ticker.mark_iv || 0,
         bid_ask_spread: bidAskSpread,
-        time_to_expiry: (new Date(item.expiration_timestamp).getTime() - Date.now()) / (1000 * 60 * 60 * 24),
+        time_to_expiry:
+          (new Date(item.expiration_timestamp).getTime() - Date.now()) / (1000 * 60 * 60 * 24),
       };
     });
 
-    const filtered = options.filter((option) => {
-      const matchesAsset = option.instrument_name.startsWith(filters.baseAsset);
-      const matchesType = filters.optionType === 'both' || option.option_type === filters.optionType;
-      const matchesIV = !filters.minIV || !filters.maxIV || (
-        option.implied_volatility >= filters.minIV && option.implied_volatility <= filters.maxIV
-      );
-      const matchesStrike = !filters.minStrike || !filters.maxStrike || (
-        option.strike >= filters.minStrike && option.strike <= filters.maxStrike
-      );
-      const matchesExpiry = !filters.expiryDates?.length || filters.expiryDates.includes(option.expiry);
-      return matchesAsset && matchesType && matchesIV && matchesStrike && matchesExpiry;
-    }).slice(0, 20);
+    const filtered = options
+      .filter((option) => {
+        const matchesAsset = option.instrument_name.startsWith(filters.baseAsset);
+        const matchesType = filters.optionType === 'both' || option.option_type === filters.optionType;
+        const matchesIV =
+          !filters.minIV ||
+          !filters.maxIV ||
+          (option.implied_volatility >= filters.minIV && option.implied_volatility <= filters.maxIV);
+        const matchesStrike =
+          !filters.minStrike ||
+          !filters.maxStrike ||
+          (option.strike >= filters.minStrike && option.strike <= filters.maxStrike);
+        const matchesExpiry =
+          !filters.expiryDates?.length || filters.expiryDates.includes(option.expiry);
+        return matchesAsset && matchesType && matchesIV && matchesStrike && matchesExpiry;
+      })
+      .slice(0, 20);
 
     await db.collection('cache').doc(cacheKey).set({
       options: filtered,
@@ -147,3 +162,4 @@ export const placeOrder = functions.https.onRequest(async (req, res) => {
     res.status(500).json({ error: 'Failed to place order' });
   }
 });
+

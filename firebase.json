@@ -1,29 +1,33 @@
 {
-    "functions": {
-      "source": "functions",
-      "codebase": "default",
-      "ignore": ["node_modules", ".git", "firebase-debug.log", "firebase-debug.*.log"]
-    },
-    "hosting": {
-      "public": "dist",
-      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
-      "rewrites": [
-        {
-          "source": "/api/login",
-          "function": "login"
-        },
-        {
-          "source": "/api/getOptions",
-          "function": "getOptions"
-        },
-        {
-          "source": "/api/saveStrategy",
-          "function": "saveStrategy"
-        },
-        {
-          "source": "/api/placeOrder",
-          "function": "placeOrder"
-        }
-      ]
-    }
+  "functions": {
+    "source": "functions",
+    "codebase": "default",
+    "ignore": ["node_modules", ".git", "firebase-debug.log", "firebase-debug.*.log"]
+  },
+  "hosting": {
+    "public": "dist",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "rewrites": [
+      {
+        "source": "/api/login",
+        "function": "login"
+      },
+      {
+        "source": "/api/getOptions",
+        "function": "getOptions"
+      },
+      {
+        "source": "/api/saveStrategy",
+        "function": "saveStrategy"
+      },
+      {
+        "source": "/api/placeOrder",
+        "function": "placeOrder"
+      },
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
   }
+}
